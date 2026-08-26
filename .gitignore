@@ -25,6 +25,7 @@
 !deps.json
 !CMakeLists.txt
 !CMakePresets.json
+!/MCP_PLAN.md
 
 # Exclude old macOS Finder metadata
 .DS_Store

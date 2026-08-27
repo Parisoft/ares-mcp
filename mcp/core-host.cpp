@@ -258,6 +258,18 @@ auto CoreHost::coreLoop(uintptr_t) -> void {
           rd(0x30300004), rd(0x30300000), (int)cpu.scc.status.interruptEnable,
           (u32)cpu.scc.cause.interruptPending, (u32)cpu.scc.cause.exceptionCode, (unsigned long long)cpu.scc.epc);
         std::fprintf(stderr, "[mcp-debug] rsp.ipu.pc=0x%08x\n", rsp.ipu.pc);
+        if(_frameCount == 500) {
+          if(FILE* fp = std::fopen("/tmp/imem_dump.bin", "wb")) {
+            for(u32 i = 0; i < 0x1000; i += 4) { u32 w = rd(0x0410'0000u + i); std::fwrite(&w, 1, 4, fp); }
+            std::fclose(fp);
+            std::fprintf(stderr, "[mcp-debug] dumped IMEM (4KiB)\n");
+          }
+          if(FILE* fp = std::fopen("/tmp/dmem_dump.bin", "wb")) {
+            for(u32 i = 0; i < 0x1000; i += 4) { u32 w = rd(0x0400'0000u + i); std::fwrite(&w, 1, 4, fp); }
+            std::fclose(fp);
+            std::fprintf(stderr, "[mcp-debug] dumped DMEM (4KiB)\n");
+          }
+        }
       }
     }
 

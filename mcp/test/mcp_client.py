@@ -192,12 +192,22 @@ def main():
     expect(os.path.isfile(shot_path) and open(shot_path, 'rb').read() == png,
            'inline PNG matches the saved file')
 
+    # always: a fully black frame means the core produced no video — that is
+    # a boot failure, whatever the ROM is (catches the commercial-ROM stall)
+    width, height, rows, bpp = decode_png(png)
+    print(f'  frame: {width}x{height} ({bpp} bytes/pixel)')
+    nonblack = 0
+    for y in range(0, height, 4):
+        for x in range(0, width, 4):
+            r_, g_, b_ = pixel(rows, bpp, x, y)
+            if r_ >= 0x10 or g_ >= 0x10 or b_ >= 0x10:
+                nonblack += 1
+    expect(nonblack > 0, 'frame is not fully black')
+
     if not args.no_check:
         # the green ROM fills RDRAM 0x80100000-0x8012C000 (a green band across
         # the top ~93 rows) and draws a white box (120 rows x 240 cols) at
         # ~x208/y192; the rest of the screen stays black
-        width, height, rows, bpp = decode_png(png)
-        print(f'  frame: {width}x{height} ({bpp} bytes/pixel)')
         green = white = black = sampled = 0
         for y in range(0, height, 2):
             for x in range(0, width, 2):

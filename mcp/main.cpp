@@ -203,7 +203,9 @@ auto main(int argc, char** argv) -> int {
     return 0;
   }
   if(command == "run") {
-    std::vector<string> options;
+    //nall::Arguments treats the first element as the program argument, so
+    //prepend a placeholder before the actual options
+    std::vector<string> options{"ares-mcp"};
     for(int i = 2; i < argc; i++) options.push_back(argv[i]);
     return run(nall::Arguments{options});
   }

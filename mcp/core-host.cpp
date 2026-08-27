@@ -224,6 +224,58 @@ auto CoreHost::coreLoop(uintptr_t) -> void {
     }
     root->run();  //one frame of simulation; returns at VI refresh
     _frameCount++;
+
+    //temporary debugging aid: MCP_DEBUG_PC=1 traces the CPU PC
+    if(getenv("MCP_DEBUG_PC") && (_frameCount <= 16 || _frameCount % 60 == 0)) {
+      std::fprintf(stderr, "[mcp-debug] frame %llu cpu.pc=0x%llx\n",
+        (unsigned long long)_frameCount, (unsigned long long)cpu.ipu.pc);
+    }
+
+    //temporary debugging aid: MCP_DEBUG_DUMP=ADDR dumps 4KiB of RDRAM at frame 120
+    if(const char* d = getenv("MCP_DEBUG_DUMP")) {
+      if(_frameCount == 120) {
+        u64 addr = strtoull(d, nullptr, 16);
+        if(FILE* fp = std::fopen("/tmp/rdram_dump.bin", "wb")) {
+          for(u32 i = 0; i < 0x1000; i += 4) {
+            u32 w = (u32)rdram.ram.read<Word>(addr & 0x3fff'ffff, RBusDevice::ARES_DEBUGGER);
+            std::fwrite(&w, 1, 4, fp);
+          }
+          std::fclose(fp);
+          std::fprintf(stderr, "[mcp-debug] dumped RDRAM @0x%llx (4KiB) to /tmp/rdram_dump.bin\n", (unsigned long long)addr);
+        }
+      }
+    }
+
+    //temporary debugging aid: MCP_DEBUG_HW=1 dumps key hardware state every 500 frames
+    if(getenv("MCP_DEBUG_HW")) {
+      if(_frameCount >= 120 && _frameCount % 500 == 0) {
+        std::fprintf(stderr, "[mcp-debug] ---- frame %llu ----\n", (unsigned long long)_frameCount);
+        auto rd = [](u32 a) -> u32 { return (u32)cpu.readDebug<Word>(0xA000'0000u | a); };
+        std::fprintf(stderr, "[mcp-debug] SP_STATUS=0x%08x SP_PC=0x%08x SP_IBASE=0x%08x SP_DMEM=0x%08x\n", rd(0x30300100), rd(0x30300104), rd(0x30300108), rd(0x3030010c));
+        std::fprintf(stderr, "[mcp-debug] VI_STATUS=0x%08x VI_V_CURRENT=0x%08x VI_V_INTR=0x%08x\n", rd(0x04400010), rd(0x04400014), rd(0x04400028));
+        std::fprintf(stderr, "[mcp-debug] COUNT=%llu COMPARE=%llu\n", (unsigned long long)cpu.scc.count, (unsigned long long)cpu.scc.compare);
+        std::fprintf(stderr, "[mcp-debug] MI_INTR_MASK=0x%08x MI_INTR_REG=0x%08x RI: ime=%d pending=%08x cause=%u epc=0x%llx\n",
+          rd(0x30300004), rd(0x30300000), (int)cpu.scc.status.interruptEnable,
+          (u32)cpu.scc.cause.interruptPending, (u32)cpu.scc.cause.exceptionCode, (unsigned long long)cpu.scc.epc);
+        std::fprintf(stderr, "[mcp-debug] rsp.ipu.pc=0x%08x\n", rsp.ipu.pc);
+      }
+    }
+
+    //temporary debugging aid: MCP_DEBUG_ICACHE=ADDR dumps icache lines covering ADDR at frame 120
+    if(const char* d = getenv("MCP_DEBUG_ICACHE")) {
+      if(_frameCount == 120) {
+        u64 vaddr = strtoull(d, nullptr, 16);
+        u32 paddr = (u32)(vaddr & 0x3fff'ffff);
+        std::fprintf(stderr, "[mcp-debug] icache lines for vaddr 0x%llx (recompiler.enabled=%d)\n",
+          (unsigned long long)vaddr, (int)cpu.recompiler.enabled);
+        for(u32 a = (paddr & ~0x1f) - 0x40; a < (paddr & ~0x1f) + 0x140; a += 0x20) {
+          auto& ln = cpu.icache.line((u64)0x8000'0000 | a);
+          std::fprintf(stderr, "[mcp-debug]   line@%05x tag=%08x v=%d words: %08x %08x %08x %08x %08x %08x %08x %08x\n",
+            a, ln.tagKey, (int)ln.valid(), ln.words[0], ln.words[1], ln.words[2], ln.words[3],
+            ln.words[4], ln.words[5], ln.words[6], ln.words[7]);
+        }
+      }
+    }
     {
       lock_guard<mutex> lock(_frameMutex);
       _inFrame = false;

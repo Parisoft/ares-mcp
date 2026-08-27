@@ -43,6 +43,7 @@ struct PIF : Thread, Memory::SI<PIF> {
 
   //hle.cpp
   auto mainHLE() -> void;
+  auto bootLoadGame() -> void;
   auto addressCRC(u16 address) const -> n5;
   auto dataCRC(std::span<const u8> data) const -> n8;
   auto descramble(n4 *buf, int size) -> void;

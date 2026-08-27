@@ -4,6 +4,18 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCO
 
 project(ares VERSION ${ARES_VERSION_CANONICAL})
 
+option(ARES_BUILD_MCP "Build the headless N64 MCP server (no GUI, no SDL, no X server)" OFF)
+
+if(ARES_BUILD_MCP)
+  # The headless MCP server only needs the N64 core. It builds without the
+  # GUI toolkit (hiro), the SDL-based output layer (ruby), the desktop
+  # application, and the prebuilt ares-deps payload (which exists primarily
+  # for SDL/Qt/GTK).
+  set(ARES_SKIP_DEPS ON CACHE BOOL "Do not fetch prebuilt dependencies" FORCE)
+  set(ARES_ENABLE_CHD OFF CACHE BOOL "Enable CHD format support via libchdr" FORCE)
+  set(ARES_CORES "n64" CACHE STRING "List of systems to be built by the project" FORCE)
+endif()
+
 include(compilerconfig)
 include(defaults)
 include(helpers)
@@ -12,8 +24,11 @@ add_subdirectory(thirdparty)
 
 add_subdirectory(nall/nall)
 add_subdirectory(libco)
-add_subdirectory(ruby)
-add_subdirectory(hiro)
+
+if(NOT ARES_BUILD_MCP)
+  add_subdirectory(ruby)
+  add_subdirectory(hiro)
+endif()
 
 # gersemi: off
 set(
@@ -25,7 +40,12 @@ set(
 
 add_subdirectory(ares)
 add_subdirectory(mia)
-add_subdirectory(desktop-ui)
+
+if(ARES_BUILD_MCP)
+  add_subdirectory(mcp)
+else()
+  add_subdirectory(desktop-ui)
+endif()
 
 option(ARES_BUILD_OPTIONAL_TARGETS "Include supplemental tools and tests" OFF)
 

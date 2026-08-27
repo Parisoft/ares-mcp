@@ -1,12 +1,36 @@
 struct HiddenRAM {
   u8* data = nullptr;
 
+  //The hidden-bit shadow is only backed by real memory on the software path;
+  //the Vulkan path borrows a pointer to the GPU buffer instead. When data is
+  //null (unallocated / disabled), reads return 0 and writes are discarded.
+  u32 size = 0;
+
+  auto reset() -> void {
+    if(data) memory::free<u8, 64_KiB>(data), data = nullptr;
+    size = 0;
+  }
+
+  auto allocate(u32 capacity) -> void {
+    reset();
+    size = capacity;
+    data = memory::allocate<u8, 64_KiB>(capacity);
+    fill();
+  }
+
+  auto fill() -> void {
+    if(!data) return;
+    for(u32 address = 0; address < size; address++) data[address] = 0;
+  }
+
   auto nibble(u32 address) -> u32 {
+    if(!data) return 0;
     u8* h = &data[address >> 1];
     return (h[0] & 3) << 2 | (h[1] & 3);
   }
 
   auto writeBit(u32 address, n1 value) -> void {
+    if(!data) return;
     u32 shift = 1 - (address & 1);
     u8& h = data[address >> 1];
     h = (h & ~(1 << shift)) | (value << shift);
@@ -14,6 +38,7 @@ struct HiddenRAM {
 
   template<u32 Size>
   auto update(u32 address, u64 value) -> void {
+    if(!data) return;
     u8* h = &data[address >> 1];
     if constexpr(Size == Byte) {
       if(address & 1) writeBit(address, value & 1);
@@ -35,6 +60,7 @@ struct HiddenRAM {
 
   template<u32 Size>
   auto ebusScatter(u32 address, u64 value) -> void {
+    if(!data) return;
     if constexpr(Size == Byte) {
       writeBit(address, (address & 3) == 3 ? value & 1 : 0);
     }
@@ -60,6 +86,7 @@ struct HiddenRAM {
   }
 
   auto updateWords4(u32 address, const u32* value) -> void {
+    if(!data) return;
     #if ARCHITECTURE_SUPPORTS_SSE4_1
     __m128i v = _mm_loadu_si128((const __m128i*)value);
     __m128i m = _mm_and_si128(v, _mm_set1_epi16(1));

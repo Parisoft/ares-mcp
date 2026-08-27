@@ -259,6 +259,41 @@ auto PIF::challenge() -> void {
   }
 }
 
+auto PIF::bootLoadGame() -> void {
+  //On real hardware the PIF MCU takes over here: it loads the RSP boot
+  //microcode (which DMAs the game image into RDRAM) and the game's
+  //crt0 completes the RDRAM (RI/RIMBUS) initialization; the CPU then
+  //lands at RDRAM[0x80000000 + entry]. ares does not model the RSP
+  //boot microcode, so emulate the net effect:
+  //  1) bring the RDRAM banks up (mapIdentity + RI-active). ares's
+  //     RIMBUS chip-register path does not match any chip decode, so
+  //     the chip state is programmed directly — the same final state
+  //     the hardware reaches after the standard RI init sequence;
+  //  2) for the ipl3 layout (game image at ROM offset 0x1148, whose
+  //     first word is the 16-bit landing offset) load the first game
+  //     block into RDRAM at that offset. The ipl3 trampoline fills
+  //     RDRAM[0x0..0x4000) afterwards, so the game must land at an
+  //     offset of 0x4000 or greater.
+  for (u32 n = 0; n < 4; n++) {
+    auto& chip = rdram.chips[n];
+    if(!chip.present) continue;
+    chip.enable = 1;
+    chip.deviceID = n * 2;
+    chip.cci = chip.ccHigh;
+  }
+  rdram.updateMapping();
+  ri.io.currentLoaded = 1;
+  ri.io.select = 0x14;
+
+  constexpr u32 gameOffset = 0x1148;
+  constexpr u32 gameBlock  = 0x1000;
+  if (cartridge.rom.size <= gameOffset) return;
+  u32 entry = cartridge.rom.read<Word>(gameOffset) & 0x1FFFF;
+  for (u32 i = 0; i < gameBlock && gameOffset + i < cartridge.rom.size; i++) {
+    rdram.ram.write<Byte>(entry + i, cartridge.rom.read<Byte>(gameOffset + i), RBusDevice::SP_DMA);
+  }
+}
+
 auto PIF::mainHLE() -> void {
   constexpr u32 clocks = 10240 * 8;
   step(clocks);
@@ -310,6 +345,7 @@ auto PIF::mainHLE() -> void {
     io.romLockout = 1;
     joyInit();
     state = WaitGetChecksum;
+    bootLoadGame();
     return;
   }
 

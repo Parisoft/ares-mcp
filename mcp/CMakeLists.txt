@@ -3,6 +3,7 @@ set(CONSOLE TRUE)
 add_executable(mcp
   main.cpp
   core-host.cpp
+  server.cpp
 )
 
 target_include_directories(mcp PRIVATE ${CMAKE_SOURCE_DIR})

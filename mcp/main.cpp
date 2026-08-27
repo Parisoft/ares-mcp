@@ -1,9 +1,11 @@
 #include <mcp/core-host.hpp>
 #include <mcp/platform.hpp>
+#include <mcp/server.hpp>
 
-#include <nall/main.hpp>
+#include <nall/arguments.hpp>
 
 #include <csignal>
+#include <cstring>
 #include <execinfo.h>
 
 namespace mcp {
@@ -27,7 +29,11 @@ auto usage() -> void {
     "ares-mcp — headless N64 core host (MCP server)\n",
     "\n",
     "Usage:\n",
-    "  ares-mcp run [options]\n",
+    "  ares-mcp mcp [options]     Run as an MCP (Model Context Protocol) server\n",
+    "  ares-mcp run [options]     Run a ROM headless (CLI)\n",
+    "\n",
+    "MCP options:\n",
+    "  --verbose                  Echo protocol traffic to stderr\n",
     "\n",
     "Options:\n",
     "  --rom <path>              N64 ROM to load (.z64/.n64/.v64)\n",
@@ -48,6 +54,22 @@ auto usage() -> void {
     "  --state-out <path>        Save a state when the run ends\n",
     "  --verbose                 Echo core log messages to stderr\n"
   );
+}
+
+auto mcpServer(int argc, char** argv) -> int {
+  mcp::CoreHost host;
+  mcp::McpServer server(host);
+  for(int i = 0; i < argc; i++) {
+    if(std::strcmp(argv[i], "--verbose") == 0) server.setVerbose(true);
+  }
+
+  signal(SIGINT, onSignal);
+  signal(SIGTERM, onSignal);
+
+  int result = server.run();
+
+  host.unload();
+  return result;
 }
 
 auto run(nall::Arguments args) -> int {
@@ -154,7 +176,7 @@ auto crashHandler(int sig) -> void {
   _exit(139);
 }
 
-auto nall::main(nall::Arguments arguments) -> void {
+auto main(int argc, char** argv) -> int {
   //temporary: capture crash backtraces (remove before commit)
   signal(SIGSEGV, crashHandler);
   signal(SIGBUS, crashHandler);
@@ -163,18 +185,30 @@ auto nall::main(nall::Arguments arguments) -> void {
   //the core talks to the frontend exclusively through this pointer
   ares::platform = &mcp::platform;
 
-  if(!arguments) {
+  if(argc < 2) {
     usage();
-    return;
+    return 1;
   }
 
-  auto command = arguments.take();
-  if(command == "run") {
-    run(arguments);
-  } else if(command == "help" || command == "--help" || command == "-h") {
-    usage();
-  } else {
-    print("ares-mcp: unknown command: ", command, "\n");
-    usage();
+  //the subcommand is parsed from the raw argv: nall::Arguments rewrites any
+  //argument that matches a directory in the working directory to an absolute
+  //path, which would mangle the "mcp" subcommand when run from the repo root
+  auto command = string{argv[1]};
+
+  if(command == "mcp") {
+    return mcpServer(argc - 2, argv + 2);
   }
+  if(command == "help" || command == "--help" || command == "-h") {
+    usage();
+    return 0;
+  }
+  if(command == "run") {
+    std::vector<string> options;
+    for(int i = 2; i < argc; i++) options.push_back(argv[i]);
+    return run(nall::Arguments{options});
+  }
+
+  print("ares-mcp: unknown command: ", command, "\n");
+  usage();
+  return 1;
 }

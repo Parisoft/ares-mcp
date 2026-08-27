@@ -69,6 +69,8 @@ struct CoreHost {
   auto gameName() const -> string;
   auto region() const -> string { return _region; }
   auto gdbStatus() const -> string;
+  auto running() const -> bool { return _running; }
+  auto saveDir() const -> const string& { return options.saveDir; }
 
   // also echo log lines to stderr (CLI debugging aid)
   bool verboseLog = false;

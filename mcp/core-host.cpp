@@ -332,7 +332,11 @@ auto CoreHost::startWavCapture(u32 seconds) -> bool {
 auto CoreHost::finishWavCapture(string path) -> bool {
   {
     unique_lock<mutex> lock(_audioMutex);
-    _audioCond.wait(lock, [&] { return !_capturing || !_running; });
+    //bound the wait: a game that produces no audio never fills the capture,
+    //and we must not hold the caller (e.g. the MCP server) hostage forever
+    u64 seconds = _wavRate ? _captureTarget / _wavRate : 30;
+    if(seconds < 1) seconds = 1;
+    _audioCond.wait_for(lock, (seconds * 2 + 30) * 1s, [&] { return !_capturing || !_running; });
   }
   if(_wavLeft.empty()) return false;
   if(ai.stream && ai.stream->channels() > 1) {

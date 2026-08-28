@@ -65,8 +65,9 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
   stopServer = false;
 
   auto url = getURL(port, useIPv4);
-  printf("Opening TCP-server on %s\n", url.data());
- 
+  //diagnostic only: must NOT go to stdout (it carries the MCP protocol stream)
+  fprintf(stderr, "Opening TCP-server on %s\n", url.data());
+
   auto threadServer = std::thread([this, port, useIPv4]() {
     serverRunning = true;
 
@@ -94,7 +95,7 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
         #endif
 
         if(!socketSetBlockingMode(fdServer, true)) {
-          print("TCP: failed to set to blocking mode!\n");
+          fprintf(stderr, "TCP: failed to set to blocking mode!\n");
         }
 
         #if defined(SO_RCVTIMEO)
@@ -128,7 +129,7 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
       }
 
       if(bindRes < 0 || listen(fdServer, 1) < 0) {
-        printf("error binding socket on port %d! (%s)\n", port, strerror(errno));
+        fprintf(stderr, "error binding socket on port %d! (%s)\n", port, strerror(errno));
         break;
       }
 
@@ -138,7 +139,7 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
         if(fdClient < 0) {
           if(errno != EAGAIN) {
             if(!stopServer)
-              printf("error accepting connection! (%s)\n", strerror(errno));
+              fprintf(stderr, "error accepting connection! (%s)\n", strerror(errno));
             break;
           }
           std::this_thread::sleep_for(std::chrono::milliseconds(CLIENT_SLEEP_MS));
@@ -166,14 +167,14 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
       }
     }
     
-    printf("Stopping TCP-server...\n");
+    fprintf(stderr, "Stopping TCP-server...\n");
 
     socketClose(fdClient);
     fdClient = -1;
 
     wantKickClient = false;
 
-    printf("TCP-server stopped\n");
+    fprintf(stderr, "TCP-server stopped\n");
     serverRunning = false;
   });
 
@@ -201,7 +202,7 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
       if(localSendBuffer.size() > 0) {
         auto bytesWritten = send(fdClient, localSendBuffer.data(), localSendBuffer.size(), 0);
         if(bytesWritten < localSendBuffer.size()) {
-          printf("Error sending data! (%s)\n", strerror(errno));
+          fprintf(stderr, "Error sending data! (%s)\n", strerror(errno));
         }
 
         if constexpr(TCP_LOG_MESSAGES) {
@@ -249,7 +250,7 @@ NALL_HEADER_INLINE auto Socket::open(u32 port, bool useIPv4) -> bool {
         #else
         if (errno != EAGAIN) {
         #endif
-          printf("TCP server: error receiving data from client: %s\n", strerror(errno));
+          fprintf(stderr, "TCP server: error receiving data from client: %s\n", strerror(errno));
           disconnectClient();
         }
       }

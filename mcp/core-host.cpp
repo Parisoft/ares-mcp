@@ -41,6 +41,9 @@ auto CoreHost::load(const Options& opts) -> bool {
         appendLog("STATUS", "game requested exit (XIOCTL)");
       }
     };
+    platform.onInput = [this](ares::Node::Input::Input in) -> void {
+      applyInputState(in);
+    };
   }
 
   //clean up any previous session
@@ -82,7 +85,9 @@ auto CoreHost::load(const Options& opts) -> bool {
   ares::Nintendo64::option("Recompiler", options.recompiler);
   ares::Nintendo64::option("Expansion Pak", options.expansionPak);
 
-  //5) core
+  //5) core (the GDB server must be reset BEFORE the core loads: the core's
+  //    System::initDebugHooks() wires the debugger hooks, which reset() clears)
+  if(options.gdb) GDB::server.reset();
   auto name = string{"[Nintendo] Nintendo 64 (", pal ? "PAL" : "NTSC", ")"};
   if(!ares::Nintendo64::load(root, name)) {
     print("ares-mcp: failed to load the N64 core");
@@ -113,10 +118,11 @@ auto CoreHost::load(const Options& opts) -> bool {
     }
   }
 
-  //8) GDB remote debug server (the core's debugger is wired in via
-  //   System::initDebugHooks(); this just opens the TCP listener)
-  GDB::server.reset();
+  //8) GDB remote debug server (the core's debugger hooks are wired in via
+  //   System::initDebugHooks() during the core load above; reset() was run
+  //   BEFORE that load, and this just opens the TCP listener)
   if(options.gdb) {
+    GDB::server.close();  //stop the listener from a previous session
     if(!GDB::server.open(options.gdbPort, true)) {
       print("ares-mcp: failed to open the GDB server on port ", (string)options.gdbPort);
       return false;
@@ -130,6 +136,10 @@ auto CoreHost::power() -> void {
   if(!root) return;
   _frameCount = 0;
   _gameExited = false;
+  {
+    lock_guard<mutex> lock(_inputMutex);
+    _inputState.clear();  //fresh power-on: all inputs neutral
+  }
   root->power();
 }
 
@@ -152,6 +162,10 @@ auto CoreHost::unload() -> void {
   _region = {};
   _frameCount = 0;
   _gameExited = false;
+  {
+    lock_guard<mutex> lock(_inputMutex);
+    _inputState.clear();
+  }
 }
 
 // --- frame loop --------------------------------------------------------------
@@ -224,70 +238,7 @@ auto CoreHost::coreLoop(uintptr_t) -> void {
     }
     root->run();  //one frame of simulation; returns at VI refresh
     _frameCount++;
-
-    //temporary debugging aid: MCP_DEBUG_PC=1 traces the CPU PC
-    if(getenv("MCP_DEBUG_PC") && (_frameCount <= 16 || _frameCount % 60 == 0)) {
-      std::fprintf(stderr, "[mcp-debug] frame %llu cpu.pc=0x%llx\n",
-        (unsigned long long)_frameCount, (unsigned long long)cpu.ipu.pc);
-    }
-
-    //temporary debugging aid: MCP_DEBUG_DUMP=ADDR dumps 4KiB of RDRAM at frame 120
-    if(const char* d = getenv("MCP_DEBUG_DUMP")) {
-      if(_frameCount == 120) {
-        u64 addr = strtoull(d, nullptr, 16);
-        if(FILE* fp = std::fopen("/tmp/rdram_dump.bin", "wb")) {
-          for(u32 i = 0; i < 0x1000; i += 4) {
-            u32 w = (u32)rdram.ram.read<Word>(addr & 0x3fff'ffff, RBusDevice::ARES_DEBUGGER);
-            std::fwrite(&w, 1, 4, fp);
-          }
-          std::fclose(fp);
-          std::fprintf(stderr, "[mcp-debug] dumped RDRAM @0x%llx (4KiB) to /tmp/rdram_dump.bin\n", (unsigned long long)addr);
-        }
-      }
-    }
-
-    //temporary debugging aid: MCP_DEBUG_HW=1 dumps key hardware state every 500 frames
-    if(getenv("MCP_DEBUG_HW")) {
-      if(_frameCount >= 120 && _frameCount % 500 == 0) {
-        std::fprintf(stderr, "[mcp-debug] ---- frame %llu ----\n", (unsigned long long)_frameCount);
-        auto rd = [](u32 a) -> u32 { return (u32)cpu.readDebug<Word>(0xA000'0000u | a); };
-        std::fprintf(stderr, "[mcp-debug] SP_STATUS=0x%08x SP_PC=0x%08x SP_IBASE=0x%08x SP_DMEM=0x%08x\n", rd(0x30300100), rd(0x30300104), rd(0x30300108), rd(0x3030010c));
-        std::fprintf(stderr, "[mcp-debug] VI_STATUS=0x%08x VI_V_CURRENT=0x%08x VI_V_INTR=0x%08x\n", rd(0x04400010), rd(0x04400014), rd(0x04400028));
-        std::fprintf(stderr, "[mcp-debug] COUNT=%llu COMPARE=%llu\n", (unsigned long long)cpu.scc.count, (unsigned long long)cpu.scc.compare);
-        std::fprintf(stderr, "[mcp-debug] MI_INTR_MASK=0x%08x MI_INTR_REG=0x%08x RI: ime=%d pending=%08x cause=%u epc=0x%llx\n",
-          rd(0x30300004), rd(0x30300000), (int)cpu.scc.status.interruptEnable,
-          (u32)cpu.scc.cause.interruptPending, (u32)cpu.scc.cause.exceptionCode, (unsigned long long)cpu.scc.epc);
-        std::fprintf(stderr, "[mcp-debug] rsp.ipu.pc=0x%08x\n", rsp.ipu.pc);
-        if(_frameCount == 500) {
-          if(FILE* fp = std::fopen("/tmp/imem_dump.bin", "wb")) {
-            for(u32 i = 0; i < 0x1000; i += 4) { u32 w = rd(0x0410'0000u + i); std::fwrite(&w, 1, 4, fp); }
-            std::fclose(fp);
-            std::fprintf(stderr, "[mcp-debug] dumped IMEM (4KiB)\n");
-          }
-          if(FILE* fp = std::fopen("/tmp/dmem_dump.bin", "wb")) {
-            for(u32 i = 0; i < 0x1000; i += 4) { u32 w = rd(0x0400'0000u + i); std::fwrite(&w, 1, 4, fp); }
-            std::fclose(fp);
-            std::fprintf(stderr, "[mcp-debug] dumped DMEM (4KiB)\n");
-          }
-        }
-      }
-    }
-
-    //temporary debugging aid: MCP_DEBUG_ICACHE=ADDR dumps icache lines covering ADDR at frame 120
-    if(const char* d = getenv("MCP_DEBUG_ICACHE")) {
-      if(_frameCount == 120) {
-        u64 vaddr = strtoull(d, nullptr, 16);
-        u32 paddr = (u32)(vaddr & 0x3fff'ffff);
-        std::fprintf(stderr, "[mcp-debug] icache lines for vaddr 0x%llx (recompiler.enabled=%d)\n",
-          (unsigned long long)vaddr, (int)cpu.recompiler.enabled);
-        for(u32 a = (paddr & ~0x1f) - 0x40; a < (paddr & ~0x1f) + 0x140; a += 0x20) {
-          auto& ln = cpu.icache.line((u64)0x8000'0000 | a);
-          std::fprintf(stderr, "[mcp-debug]   line@%05x tag=%08x v=%d words: %08x %08x %08x %08x %08x %08x %08x %08x\n",
-            a, ln.tagKey, (int)ln.valid(), ln.words[0], ln.words[1], ln.words[2], ln.words[3],
-            ln.words[4], ln.words[5], ln.words[6], ln.words[7]);
-        }
-      }
-    }
+    pollTapReleases();
     {
       lock_guard<mutex> lock(_frameMutex);
       _inFrame = false;
@@ -372,6 +323,99 @@ auto CoreHost::screenshot(string path) -> bool {
     height = _videoHeight;
   }
   return Encode::PNG::RGB8(path, pixels.data(), width * sizeof(u32), width, height);
+}
+
+// --- controller input --------------------------------------------------------
+
+auto CoreHost::setControllerInput(u32 port, const string& control, const string& action,
+                                  double value, u32 frames) -> string {
+  if(port < 1 || port > 4) return "port must be 1-4";
+  if(action != "press" && action != "release" && action != "tap")
+    return "action must be 'press', 'release', or 'tap'";
+
+  static const ControllerPort* ports[] = {
+    nullptr, &controllerPort1, &controllerPort2, &controllerPort3, &controllerPort4
+  };
+  auto* gamepad = dynamic_cast<ares::Nintendo64::Gamepad*>(ports[port]->device.get());
+  if(!gamepad) return string{"no gamepad attached to port ", port};
+
+  ares::Node::Input::Input node;
+  if(control == "a") node = gamepad->a;
+  else if(control == "b") node = gamepad->b;
+  else if(control == "start") node = gamepad->start;
+  else if(control == "z") node = gamepad->z;
+  else if(control == "l") node = gamepad->l;
+  else if(control == "r") node = gamepad->r;
+  else if(control == "up") node = gamepad->up;
+  else if(control == "down") node = gamepad->down;
+  else if(control == "left") node = gamepad->left;
+  else if(control == "right") node = gamepad->right;
+  else if(control == "cam_up") node = gamepad->cameraUp;
+  else if(control == "cam_down") node = gamepad->cameraDown;
+  else if(control == "cam_left") node = gamepad->cameraLeft;
+  else if(control == "cam_right") node = gamepad->cameraRight;
+  else if(control == "x") node = gamepad->x;
+  else if(control == "y") node = gamepad->y;
+  else return string{"unknown control '", control,
+    "' (use a, b, start, z, l, r, up, down, left, right, cam_up, cam_down, "
+    "cam_left, cam_right, x, y)"};
+  if(!node) return string{"no gamepad attached to port ", port};
+
+  const bool isAxis = (control == "x" || control == "y");
+  if(isAxis) {
+    if(action == "release") value = 0.0;  //release centers the stick
+    if(value > 100.0) value = 100.0;
+    if(value < -100.0) value = -100.0;
+  }
+
+  {
+    lock_guard<mutex> lock(_inputMutex);
+    auto& s = _inputState[static_cast<const void*>(node.get())];
+    if(isAxis) {
+      s.axisValue = (s64)(value * 32767.0 / 100.0);
+      s.releaseAtFrame = 0;
+    } else if(action == "release") {
+      s.pressed = false;
+      s.releaseAtFrame = 0;
+    } else {  //press or tap
+      s.pressed = true;
+      s.releaseAtFrame = (action == "tap") ? (_frameCount + frames) : 0;
+    }
+  }
+  return {};
+}
+
+//called from the core thread every time the game polls its controllers
+// (the platform callback contract: set the current value of each node)
+auto CoreHost::applyInputState(ares::Node::Input::Input in) -> void {
+  if(auto button = std::dynamic_pointer_cast<ares::Core::Input::Button>(in)) {
+    bool value = false;
+    {
+      lock_guard<mutex> lock(_inputMutex);
+      if(auto it = _inputState.find(static_cast<const void*>(in.get())); it != _inputState.end())
+        value = it->second.pressed;
+    }
+    button->setValue(value);
+  } else if(auto axis = std::dynamic_pointer_cast<ares::Core::Input::Axis>(in)) {
+    s64 value = 0;
+    {
+      lock_guard<mutex> lock(_inputMutex);
+      if(auto it = _inputState.find(static_cast<const void*>(in.get())); it != _inputState.end())
+        value = it->second.axisValue;
+    }
+    axis->setValue(value);
+  }
+}
+
+//core thread, once per frame: auto-release taps that are done
+auto CoreHost::pollTapReleases() -> void {
+  lock_guard<mutex> lock(_inputMutex);
+  for(auto& [node, state] : _inputState) {
+    if(state.releaseAtFrame && _frameCount >= state.releaseAtFrame) {
+      state.pressed = false;
+      state.releaseAtFrame = 0;
+    }
+  }
 }
 
 auto CoreHost::audioRate() const -> u32 {

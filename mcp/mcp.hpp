@@ -22,6 +22,8 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <map>
+#include <memory>
 #include <mutex>
 #include <thread>
 #include <vector>

@@ -265,6 +265,22 @@ auto McpServer::tools() const -> const std::vector<Tool>& {
       &McpServer::toolRun
     },
     Tool{
+      "n64_input",
+      "Send controller input to the emulated N64. Buttons: a, b, start, z, l, r, up, down, "
+      "left, right, cam_up, cam_down, cam_left, cam_right. Analog stick: x, y (-100..100). "
+      "Actions: press (hold until released), release, tap (press then auto-release after "
+      "`frames` frames — the usual way to flick a button). Example: {control: start, "
+      "action: tap} to press Start on the title screen.",
+      schema(
+        (Json::makeObject())
+          .set("port", prop("port", "integer", "Controller port, 1-4 (default: 1)."))
+          .set("control", prop("control", "string", "Button or axis name (see description)."))
+          .set("action", propEnum("action", "press = hold; release = unpress/center; tap = press then auto-release (default: tap).", {"press", "release", "tap"}))
+          .set("value", prop("value", "number", "Axis value, -100..100 (default: 0; ignored for buttons)."))
+          .set("frames", prop("frames", "integer", "For tap: frames to hold before auto-release (default: 6, min 1)."))),
+      &McpServer::toolInput
+    },
+    Tool{
       "n64_screenshot",
       "Capture the current video output as a PNG image (returns the image inline and saves it "
       "to a file).",
@@ -377,6 +393,29 @@ auto McpServer::toolRun(McpServer& self, const Json& args) -> Json {
   if(self._host.gameExited()) msg.append(". The game exited via XIOCTL.");
   else if(stop) msg.append(". Core stopped — n64_run resumes from the current frame.");
   else msg.append(". Core still running — n64_pause or n64_stop to halt it.");
+  return resultText(msg);
+}
+
+auto McpServer::toolInput(McpServer& self, const Json& args) -> Json {
+  if(self._host.game == nullptr) return toolError("no ROM loaded — call n64_load first");
+
+  const string control = args.getString("control");
+  if(!control) return toolError("'control' is required (a, b, start, z, l, r, up, down, "
+    "left, right, cam_up, cam_down, cam_left, cam_right, x, y)");
+
+  const u32 port = (u32)args.getNumber("port", 1);
+  const string action = args.getString("action", "tap");
+  const double value = args.getNumber("value", 0.0);
+  u32 frames = (u32)args.getNumber("frames", 6);
+  if(frames < 1) frames = 1;
+  if(frames > 36000) return toolError("'frames' too large (max 36000)");
+
+  auto error = self._host.setControllerInput(port, control, action, value, frames);
+  if(error) return toolError(error);
+
+  string msg = string{"ok: ", action, " ", control, " on port ", port};
+  if(control == "x" || control == "y") msg.append(" = ").append((long)value);
+  if(action == "tap") msg.append(" (auto-releases in ").append(frames).append(" frames)");
   return resultText(msg);
 }
 

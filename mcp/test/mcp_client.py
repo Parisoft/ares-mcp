@@ -166,7 +166,7 @@ def main():
     # 2) tools/list
     r = client.request('tools/list')
     tools = {t['name']: t for t in r['result']['tools']}
-    expected = {'n64_status', 'n64_load', 'n64_run', 'n64_screenshot',
+    expected = {'n64_status', 'n64_load', 'n64_run', 'n64_input', 'n64_screenshot',
                 'n64_log', 'n64_record', 'n64_pause', 'n64_resume', 'n64_stop'}
     expect(expected <= set(tools), f'tools/list has all {len(expected)} tools')
     expect(all('inputSchema' in t and t['inputSchema'].get('type') == 'object' for t in tools.values()),
@@ -222,6 +222,25 @@ def main():
         expect(black != sampled, 'frame is not all black')
         expect(green > sampled * 0.10, f'green band rendered (green={green}/{sampled} sampled)')
         expect(white > sampled * 0.03, f'white box rendered (white={white}/{sampled} sampled)')
+
+    # 5b) controller input (n64_input): tap, press/release, axis, and bad input.
+    # Runs after the frame checks so a game that reacts to the inputs cannot
+    # disturb the frame that was just verified.
+    result = client.call('n64_input', {'control': 'start', 'action': 'tap'})
+    print(f'  input: {client.text_of(result)}')
+    expect('ok' in client.text_of(result).lower(), 'n64_input start tap accepted')
+
+    client.call('n64_input', {'control': 'a', 'action': 'press'})
+    client.call('n64_input', {'control': 'a', 'action': 'release'})
+    client.call('n64_input', {'control': 'y', 'action': 'press', 'value': 80})
+    client.call('n64_input', {'control': 'y', 'action': 'release'})
+    print('  input: press/release + axis round-trips ok')
+
+    try:
+        client.call('n64_input', {'control': 'nope', 'action': 'tap'})
+        expect(False, 'unknown control should be a tool error')
+    except RuntimeError as e:
+        expect('unknown control' in str(e), 'n64_input rejects an unknown control')
 
     # 6) log
     result = client.call('n64_log', {'limit': 50})

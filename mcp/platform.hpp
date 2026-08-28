@@ -29,6 +29,12 @@ struct Platform : ares::Platform {
   // Core events (homebrew XIOCTL fast-forward / exit, etc.).
   std::function<void(ares::Event)> onEvent{};
 
+  // Controller input state: the core samples every button/axis of each
+  // connected controller through input() whenever the game polls (see
+  // Gamepad::read()). The desktop UI reports physical controllers here; the
+  // MCP host reports the state set by n64_input.
+  std::function<void(ares::Node::Input::Input)> onInput{};
+
   auto pak(ares::Node::Object node) -> std::shared_ptr<vfs::directory> override {
     return onPak ? onPak(node) : nullptr;
   }
@@ -52,6 +58,10 @@ struct Platform : ares::Platform {
 
   auto event(ares::Event event) -> void override {
     if(onEvent) onEvent(event);
+  }
+
+  auto input(ares::Node::Input::Input in) -> void override {
+    if(onInput) onInput(in);
   }
 };
 

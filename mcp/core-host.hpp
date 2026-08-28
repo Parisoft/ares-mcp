@@ -81,11 +81,32 @@ struct CoreHost {
   std::shared_ptr<mia::Pak> systemPak{};
   std::shared_ptr<mia::Pak> gamepad{};
 
+  // --- controller input --------------------------------------------------------
+  // Set button/axis state on a controller port (the core samples it whenever
+  // the game polls its controllers).
+  //   control: a, b, start, z, l, r, up, down, left, right, cam_up, cam_down,
+  //            cam_left, cam_right (buttons) or x, y (analog axes, -100..100)
+  //   action:  press (hold until release) | release | tap (auto-release after
+  //            `frames` frames)
+  // Returns "" on success, otherwise an error message.
+  auto setControllerInput(u32 port, const string& control, const string& action,
+                          double value, u32 frames) -> string;
+
 private:
   auto coreLoop(uintptr_t) -> void;
   auto audioLoop(uintptr_t) -> void;
   auto appendLog(string channel, string message) -> void;
   auto onVideo(const u32* data, u32 width, u32 height) -> void;
+  auto applyInputState(ares::Node::Input::Input in) -> void;  // core thread, per poll
+  auto pollTapReleases() -> void;                             // core thread, per frame
+
+  struct InputState {
+    bool pressed = false;
+    s64 axisValue = 0;
+    u64 releaseAtFrame = 0;   // taps: frame at which to auto-release (0 = none)
+  };
+  std::map<const void*, InputState> _inputState;
+  std::mutex _inputMutex;
 
   Options options{};
   string _region{};

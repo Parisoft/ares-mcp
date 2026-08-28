@@ -44,6 +44,7 @@ private:
   static auto toolStatus(McpServer& self, const Json& args) -> Json;
   static auto toolLoad(McpServer& self, const Json& args) -> Json;
   static auto toolRun(McpServer& self, const Json& args) -> Json;
+  static auto toolInput(McpServer& self, const Json& args) -> Json;
   static auto toolScreenshot(McpServer& self, const Json& args) -> Json;
   static auto toolLog(McpServer& self, const Json& args) -> Json;
   static auto toolRecord(McpServer& self, const Json& args) -> Json;

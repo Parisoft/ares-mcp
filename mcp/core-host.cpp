@@ -27,6 +27,16 @@ auto CoreHost::load(const Options& opts) -> bool {
       return nullptr;
     };
     platform.onLog = [this](string channel, string message) -> void {
+      //The ISViewer tracer (libdragon emulog/debugf) is a terminal tracer with
+      //autoLineBreak off, so it notifies one character at a time. Reassemble
+      //those into lines (split on '\n') so n64_log shows readable output.
+      if(channel == "Cartridge ISViewer") {
+        appendISViewerLine(message);
+        return;
+      }
+      //Any other log activity means the ISViewer stream is done for now;
+      //flush any partial line so it is not lost.
+      flushISViewerLine();
       appendLog(channel, message);
     };
     platform.onStatus = [this](string message) -> void {
@@ -184,6 +194,7 @@ auto CoreHost::stop() -> void {
   _audioThread.join();
   _frameCond.notify_all();
   _audioCond.notify_all();
+  flushISViewerLine();  //capture any trailing text that had no final newline
 }
 
 auto CoreHost::pause() -> void {
@@ -467,6 +478,27 @@ auto CoreHost::finishWavCapture(string path) -> bool {
 auto CoreHost::appendLog(string channel, string message) -> void {
   lock_guard<mutex> lock(_logMutex);
   _logLines.push_back(LogLine{channel, message});
+  if(_logLines.size() > 4000) _logLines.pop_front();
+}
+
+auto CoreHost::appendISViewerLine(string message) -> void {
+  lock_guard<mutex> lock(_logMutex);
+  _pendingISViewer.append(message);
+  while(true) {
+    auto pos = _pendingISViewer.find("\n");
+    if(!pos) break;
+    auto line = _pendingISViewer.slice(0, pos.get());
+    _pendingISViewer.remove(0, pos.get() + 1);
+    _logLines.push_back(LogLine{"Cartridge ISViewer", line});
+    if(_logLines.size() > 4000) _logLines.pop_front();
+  }
+}
+
+auto CoreHost::flushISViewerLine() -> void {
+  lock_guard<mutex> lock(_logMutex);
+  if(_pendingISViewer.size() == 0) return;
+  _logLines.push_back(LogLine{"Cartridge ISViewer", _pendingISViewer});
+  _pendingISViewer.reset();
   if(_logLines.size() > 4000) _logLines.pop_front();
 }
 

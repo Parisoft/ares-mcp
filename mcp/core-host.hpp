@@ -96,6 +96,8 @@ private:
   auto coreLoop(uintptr_t) -> void;
   auto audioLoop(uintptr_t) -> void;
   auto appendLog(string channel, string message) -> void;
+  auto appendISViewerLine(string message) -> void;
+  auto flushISViewerLine() -> void;
   auto onVideo(const u32* data, u32 width, u32 height) -> void;
   auto applyInputState(ares::Node::Input::Input in) -> void;  // core thread, per poll
   auto pollTapReleases() -> void;                             // core thread, per frame
@@ -146,6 +148,7 @@ private:
   // log ring
   mutex _logMutex{};
   std::deque<LogLine> _logLines{};
+  string _pendingISViewer{};  //partial ISViewer line awaiting '\n' (guarded by _logMutex)
 };
 
 }

@@ -177,7 +177,8 @@ auto crashHandler(int sig) -> void {
 }
 
 auto main(int argc, char** argv) -> int {
-  //temporary: capture crash backtraces (remove before commit)
+  //print a backtrace on fatal signals: the server runs unattended, and a
+  //silent SIGSEGV with no diagnostics is very hard to debug
   signal(SIGSEGV, crashHandler);
   signal(SIGBUS, crashHandler);
   signal(SIGFPE, crashHandler);

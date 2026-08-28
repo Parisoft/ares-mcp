@@ -213,7 +213,7 @@ server state in MCP mode.
 mcp/            the headless N64 host (MCP server + CLI)
   server.cpp    MCP protocol server (tools, JSON-RPC 2.0 over stdio)
   core-host.cpp core lifecycle: power/run/stop, input, video, audio, states
-  platform.cpp  ares Platform interface implementation (headless)
+  platform.hpp  ares Platform interface implementation (headless)
   test/         e2e test client + test-ROM generators
 ares/n64/       the Nintendo 64 core (upstream ares, plus the fixes above)
 ares/ares/      core framework

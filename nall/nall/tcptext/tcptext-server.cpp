@@ -16,7 +16,8 @@ namespace nall::TCPText {
       // GDB will receive the data and commands could be injected (true for all GDB-servers).
       // Since all HTTP requests start with headers, we can simply block anything that doesn't start like a GDB client.
       if(dataStr[0] != '+') {
-        printf("Non-GDB client detected (message: %s), disconnect client\n", dataStr.data());
+        //diagnostic only: must NOT go to stdout (it carries the MCP protocol stream)
+        fprintf(stderr, "Non-GDB client detected (message: %s), disconnect client\n", dataStr.data());
         disconnectClient();
         return;
       }

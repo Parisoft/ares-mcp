@@ -17,7 +17,9 @@
 !/tools
 !/GNUMakefile
 !/LICENSE
+!/MCP_PLAN.md
 !/README.md
+!/mcp
 !.editorconfig
 !.gitignore
 !.gitattributes
@@ -51,3 +53,16 @@ tests/m68000/tests
 # Exclude unused legacy zlib header that is renamed by CMake
 thirdparty/libchdr/deps/zlib-*/zconf.h
 thirdparty/libchdr/deps/zlib-*/zconf.h.included
+
+# Test ROMs are not committed:
+# - green.z64 is generated: python3 mcp/test/make_green_rom.py mcp/test/ipl3_seed.bin mcp/test/green.z64
+# - FlappyBird.z64: open-source game, ROM ships in its repo (github.com/meeq/FlappyBird-N64)
+# - commercial ROMs (e.g. Automobili Lamborghini) must stay local
+mcp/test/*.z64
+mcp/test/n64rom.zip
+mcp/test/__pycache__/
+
+# one-off debugging probes from the FlappyBird bring-up (local only)
+mcp/test/fb_*.py
+mcp/test/gdb_rsp.py
+mcp/test/mips_dis.py

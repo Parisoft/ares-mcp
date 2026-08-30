@@ -15,7 +15,7 @@ auto Debug::_unhandled(const string& text) -> void {
   if(_totalNotices++ > 256) return;
   _unhandledNotices.push_back(text);
 
-  print(terminal::color::yellow("[unhandled] "), text, "\n");
+  print(stderr, terminal::color::yellow("[unhandled] "), text, "\n");
 }
 
 auto Debug::_unimplemented(const string& text) -> void {
@@ -23,7 +23,7 @@ auto Debug::_unimplemented(const string& text) -> void {
   if(_totalNotices++ > 256) return;
   _unimplementedNotices.push_back(text);
 
-  print(terminal::color::magenta("[unimplemented] "), text, "\n");
+  print(stderr, terminal::color::magenta("[unimplemented] "), text, "\n");
 }
 
 auto Debug::_unusual(const string& text) -> void {
@@ -31,7 +31,7 @@ auto Debug::_unusual(const string& text) -> void {
   if(_totalNotices++ > 256) return;
   _unusualNotices.push_back(text);
 
-  print(terminal::color::cyan("[unusual] "), text, "\n");
+  print(stderr, terminal::color::cyan("[unusual] "), text, "\n");
 }
 
 auto Debug::_unverified(const string& text) -> void {
@@ -39,7 +39,7 @@ auto Debug::_unverified(const string& text) -> void {
   if(_totalNotices++ > 256) return;
   _unverifiedNotices.push_back(text);
 
-  print(terminal::color::gray("[unverified] "), text, "\n");
+  print(stderr, terminal::color::gray("[unverified] "), text, "\n");
 }
 
 }

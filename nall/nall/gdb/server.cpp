@@ -318,7 +318,7 @@ namespace nall::GDB {
       case 's': {
         if(cmdName.size() > 1) {
           u64 address = cmdName.slice(1).hex();
-          printf("stepping at address unsupported, ignore (%016" PRIX64 ")\n", address);
+          fprintf(stderr, "stepping at address unsupported, ignore (%016" PRIX64 ")\n", address);
         }
 
         shouldReply = false;
@@ -399,12 +399,11 @@ namespace nall::GDB {
       }
     }
 
-    printf("Unknown-Command: %s (data: %s)\n", cmdName.data(), cmdBuffer.data());
+    fprintf(stderr, "Unknown-Command: %s (data: %s)\n", cmdName.data(), cmdBuffer.data());
     return "";
   }
 
   auto Server::onText(string_view text) -> void {
-
     if(cmdBuffer.size() == 0) {
       cmdBuffer.reserve(text.size());
     }
@@ -436,7 +435,7 @@ namespace nall::GDB {
 
         case '\x03': // CTRL+C (same as "vCtrlC" packet) -> force halt
           if constexpr(GDB_LOG_MESSAGES) {
-            printf("GDB <: CTRL+C [0x03]\n");
+            fprintf(stderr, "GDB <: CTRL+C [0x03]\n");
           }
           haltProgram();
           break;
@@ -526,7 +525,7 @@ namespace nall::GDB {
   }
 
   auto Server::onConnect() -> void {
-    printf("GDB client connected\n");
+    fprintf(stderr, "GDB client connected\n");
     if (onClientConnectCallback)
       onClientConnectCallback();
     resetClientData();
@@ -535,7 +534,7 @@ namespace nall::GDB {
 
   auto Server::onDisconnect() -> void {
     if (hasActiveClient)
-      printf("GDB client disconnected\n");
+      fprintf(stderr, "GDB client disconnected\n");
     hadHandshake = false;
     resetClientData();
   }

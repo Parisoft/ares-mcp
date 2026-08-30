@@ -10,11 +10,13 @@ RDRAM rdram;
 auto RDRAM::load(Node::Object parent) -> void {
   node = parent->append<Node::Object>("RDRAM");
 
-  if(!system.expansionPak) {
-    ram.allocate(4_MiB);
-  } else {
-    ram.allocate(4_MiB + 4_MiB);
-  }
+  u32 capacity = system.expansionPak ? 4_MiB + 4_MiB : 4_MiB;
+  ram.allocate(capacity);
+
+  //Shadow for the RDRAM hidden bits: worst case index is (address >> 1) + 8
+  //bytes, so half the data size plus headroom is sufficient. (Without this
+  //the software path would dereference a null pointer on the first write.)
+  hidden.allocate(capacity / 2 + 32);
 
   debugger.load(node);
 }
@@ -22,12 +24,14 @@ auto RDRAM::load(Node::Object parent) -> void {
 auto RDRAM::unload() -> void {
   debugger = {};
   ram.reset();
+  hidden.reset();
   node.reset();
 }
 
 auto RDRAM::power(bool reset) -> void {
   if(!reset) {
     ram.fill();
+    hidden.fill();
     u32 count = system.expansionPak ? 4 : 2;
     for(u32 n : range(4)) {
       auto& chip = chips[n];
